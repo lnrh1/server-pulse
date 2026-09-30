@@ -1,3 +1,5 @@
+<img width="1920" height="1080" alt="3c183286-7373-4f39-a08c-d1ba0ce0183f" src="https://github.com/user-attachments/assets/34fb8d3a-4ba4-4e48-91fa-2d25ba1fc313" />
+
 # Server Pulse — 为 Linux 服务器打造的资源监控
 
 > 清晰、轻量、安全的资源监控
