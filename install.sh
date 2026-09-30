@@ -30,18 +30,34 @@ if ! command -v systemctl >/dev/null 2>&1; then
 fi
 echo "Node $("$NODE_BIN" -v)"
 
-# 端口预检（同一个服务已经在跑就不算占用）
-if [ ! -f "$PREFIX/config.json" ] && command -v ss >/dev/null 2>&1 && ! systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+# 端口：优先沿用已有配置，服务目录的 config.json 或当前目录的 config.json 都算
+CFG="$PREFIX/config.json"
+LOCAL_CFG="config.json"
+for f in "$CFG" "$LOCAL_CFG"; do
+  [ -f "$f" ] || continue
+  P="$("$NODE_BIN" -e "try{process.stdout.write(String(JSON.parse(require(\"fs\").readFileSync(process.argv[1],\"utf8\")).port||\"\"))}catch(e){}" "$f")"
+  if [ -n "$P" ]; then PORT="$P"; break; fi
+done
+
+# 端口预检：服务没在跑的时候，端口被占就直接说清楚是谁占的
+if command -v ss >/dev/null 2>&1 && ! systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
   if ss -ltn "sport = :${PORT}" 2>/dev/null | grep -q LISTEN; then
     echo "端口 ${PORT} 已被占用：$(ss -ltnp "sport = :${PORT}" 2>/dev/null | tail -1)"
-    echo "换个端口重跑：sudo PORT=8123 bash install.sh"
+    echo "如果那是前台跑着的 start.sh，先 Ctrl+C 停掉；否则换个端口：sudo PORT=8123 bash install.sh"
     exit 1
   fi
 fi
 
 mkdir -p "$PREFIX"
 cp -f monitor.mjs dashboard.html login.html favicon.ico "$PREFIX/"
-CFG="$PREFIX/config.json"
+
+# 当前目录跑过 start.sh 的话，直接沿用它的配置，端口和口令都不变
+if [ ! -f "$CFG" ] && [ -f "$LOCAL_CFG" ]; then
+  cp -f "$LOCAL_CFG" "$CFG"
+  chmod 600 "$CFG"
+  echo "沿用当前目录的 config.json"
+fi
+
 if [ ! -f "$CFG" ]; then
   TOKEN="$(openssl rand -hex 16 2>/dev/null || "$NODE_BIN" -e "console.log(require(\"crypto\").randomBytes(16).toString(\"hex\"))")"
   "$NODE_BIN" -e "require(\"fs\").writeFileSync(process.argv[1], JSON.stringify({port:Number(process.argv[2]),host:\"0.0.0.0\",token:process.argv[3],sessionDays:5,intervalMs:2000,label:require(\"os\").hostname()},null,2)+\"\n\")" "$CFG" "$PORT" "$TOKEN"
@@ -68,6 +84,7 @@ else
     echo "已有 $CFG：沿用端口 $PORT；注意里面的口令是空的（等于不鉴权）"
   fi
 fi
+
 # ---- 服务单元在这里生成，仓库里不再放需要手改路径的模板 ----
 cat > "/etc/systemd/system/${SERVICE}.service" <<EOF
 [Unit]
@@ -102,14 +119,14 @@ systemctl enable "$SERVICE" >/dev/null 2>&1
 systemctl restart "$SERVICE"
 # 等它真的能访问（只看 systemd 的 active 不够：进程起来了但端口可能还没监听）
 ok=0
-if command -v curl >/dev/null 2>&1; then
-  for _ in $(seq 1 20); do
-    if systemctl is-active --quiet "$SERVICE" && curl -fsS -m 2 -o /dev/null "http://127.0.0.1:${PORT}/login" 2>/dev/null; then ok=1; break; fi
-    sleep 0.5
-  done
-else
-  for _ in 1 2 3 4 5 6; do systemctl is-active --quiet "$SERVICE" && { ok=1; break; }; sleep 1; done
-fi
+for _ in $(seq 1 20); do
+  if systemctl is-active --quiet "$SERVICE"; then
+    MP="$(systemctl show -p MainPID --value "$SERVICE" 2>/dev/null)"
+    if [ -n "$MP" ] && [ "$MP" != 0 ] && command -v ss >/dev/null 2>&1 && ss -ltnp 2>/dev/null | grep -q "pid=$MP,"; then ok=1; break; fi
+    if ! command -v ss >/dev/null 2>&1 && curl -fsS -m 2 -o /dev/null "http://127.0.0.1:${PORT}/login" 2>/dev/null; then ok=1; break; fi
+  fi
+  sleep 0.5
+done
 if [ "$ok" != 1 ]; then
   echo; echo "没能正常起来，最近的日志："; echo "----------------------------------------"
   journalctl -u "$SERVICE" -n 20 --no-pager -o cat 2>/dev/null || true

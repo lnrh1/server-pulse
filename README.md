@@ -1,5 +1,3 @@
-<img width="1920" height="1080" alt="3c183286-7373-4f39-a08c-d1ba0ce0183f" src="https://github.com/user-attachments/assets/34fb8d3a-4ba4-4e48-91fa-2d25ba1fc313" />
-
 # Server Pulse — 为 Linux 服务器打造的资源监控
 
 > 清晰、轻量、安全的资源监控
@@ -46,7 +44,9 @@ MONITOR_PORT=<端口号> bash start.sh
 bash install.sh
 ```
 
-脚本会自动提权，把程序装到 `/opt/serverpulse`，注册成 `serverpulse` 服务并设为开机自启，结束时打印面板地址与登录口令。
+如果前面用 `bash start.sh` 在前台跑着，先 Ctrl+C 停掉再执行。
+
+脚本会自动提权，把程序装到 `/opt/serverpulse`，注册成 `serverpulse` 服务并设为开机自启，结束时打印面板地址与登录口令。当前目录里已有 `config.json` 时会直接沿用，端口和口令都不变。
 
 服务会重启一次，运行期改动才会生效。查看输出：
 
