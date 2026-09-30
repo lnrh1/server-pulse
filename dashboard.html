@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>服务器监控 · Server Monitor</title>
+<link rel="icon" href="/favicon.ico">
+<style>
+  :root {
+    --bg0:#0d0f12; --bg1:#171a1f; --fg:#f4f4f4; --dim:#a0a0a0; --line:rgba(255,255,255,.09);
+    --card:rgba(255,255,255,.045); --track:rgba(255,255,255,.10);
+    --cpu:#f7fafd; --mem:#eef3f9; --disk:#e6edf5; --net:#dde7f1; --warn:#f7fafd;
+  }
+  * { box-sizing: border-box; }
+  html { scrollbar-gutter: stable; }
+  body { overflow-y: scroll; margin:0; min-height:100vh; color:var(--fg); background:radial-gradient(1200px 700px at 15% -10%, #1b2a52 0%, var(--bg0) 55%, #070b16 100%) fixed;
+    font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1;
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",Roboto,sans-serif; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1180px; margin:0 auto; padding:22px 18px 40px; }
+  header { display:flex; align-items:flex-end; gap:14px; flex-wrap:wrap; margin-bottom:16px; }
+  h1 { margin:0; font-size:21px; letter-spacing:.3px; }
+  h1 small { display:block; font-size:11px; color:var(--dim); font-weight:400; letter-spacing:1.4px; text-transform:uppercase; margin-top:3px; }
+  .pill { font-size:11.5px; color:var(--dim); background:var(--card); border:1px solid var(--line); padding:4px 9px; border-radius:99px; }
+  .pill b { color:var(--fg); display:inline-block; }
+  #p-up b { min-width:8.2em; }
+  #p-ago b { min-width:5.4em; }
+  #p-ip b { min-width:5.6em; }
+  .grid { display:grid; grid-template-columns:repeat(12,1fr); gap:12px; }
+  .card { grid-column:span 3; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 15px; position:relative; overflow:hidden; }
+  .card.wide { grid-column:span 6; }
+  .card h2 { margin:0 0 10px; font-size:11.5px; letter-spacing:1.2px; text-transform:uppercase; color:var(--dim); font-weight:700; }
+  .big { font-size:30px; font-weight:800; letter-spacing:-.8px; font-variant-numeric:tabular-nums; }
+  .big i { font-size:14px; font-style:normal; color:var(--dim); margin-left:2px; }
+  .sub { font-size:11.5px; color:var(--dim); margin-top:2px; font-variant-numeric:tabular-nums; }
+  .bar { height:7px; border-radius:99px; background:var(--track); overflow:hidden; margin:10px 0 6px; }
+  .bar > i { display:block; height:100%; width:0; border-radius:99px; transition:width .6s cubic-bezier(.4,0,.2,1); }
+  .kv { display:flex; justify-content:space-between; gap:10px; font-size:12px; padding:4px 0; border-bottom:1px dashed var(--line); }
+  .kv:last-child { border-bottom:0; } .kv span { color:var(--dim); } .kv b { font-weight:600; font-variant-numeric:tabular-nums; }
+  .cores { display:flex; gap:4px; margin-top:8px; }
+  .cores div { flex:1; height:34px; border-radius:5px; background:var(--track); position:relative; overflow:hidden; }
+  .cores div i { position:absolute; bottom:0; left:0; right:0; background:linear-gradient(180deg,rgba(255,255,255,.92),rgba(255,255,255,.34)); transition:height .5s; }
+  .cores div b { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:9px; color:#0b1020; font-weight:700; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  td, th { height:26px; }
+  tr.pad td { color:transparent; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; }
+  th { color:var(--dim); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.6px; }
+  td.r, th.r { text-align:right; }
+  .err { display:none; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.28); color:var(--fg); padding:10px 12px; border-radius:10px; font-size:12.5px; margin-bottom:12px; }
+  .err.on { display:block; }
+  @media (max-width:900px){ .card{grid-column:span 6} }
+  @media (max-width:560px){ .card{grid-column:span 12} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>服务器监控<small>serverpulse</small></h1>
+    <span class="pill" id="p-host">连接中…</span>
+    <span class="pill" id="p-ip">IP <b>—</b></span>
+    <span class="pill" id="p-up">运行 <b>—</b></span>
+    <span class="pill" id="p-ago">刷新 <b>—</b></span>
+  </header>
+  <div class="err" id="err"></div>
+
+  <div class="grid">
+    <div class="card" style="--c:var(--cpu)">
+      <h2>CPU 使用率</h2>
+      <div class="big" id="cpu-v">--<i>%</i></div>
+      <div class="sub" id="cpu-s">—</div>
+      <div class="bar"><i id="cpu-b" style="background:linear-gradient(90deg,rgba(255,255,255,.42),rgba(255,255,255,.95))"></i></div>
+      <div class="cores" id="cores"></div>
+    </div>
+
+    <div class="card">
+      <h2>内存</h2>
+      <div class="big" id="mem-v">--<i>%</i></div>
+      <div class="sub" id="mem-s">—</div>
+      <div class="bar"><i id="mem-b" style="background:linear-gradient(90deg,rgba(255,255,255,.42),rgba(255,255,255,.95))"></i></div>
+      <div class="kv"><span>可用 / 缓冲缓存</span><b id="mem-a">—</b></div>
+      <div class="kv"><span>Swap 已用</span><b id="swap">—</b></div>
+    </div>
+
+    <div class="card">
+      <h2>磁盘 IO</h2>
+      <div class="big" id="dio-v" style="font-size:22px">--</div>
+      <div class="sub">读 <span id="dio-r">—</span> · 写 <span id="dio-w">—</span></div>
+      <div class="bar"><i id="disk-b" style="background:linear-gradient(90deg,rgba(255,255,255,.42),rgba(255,255,255,.95))"></i></div>
+      <div class="kv"><span>空间使用（根分区）</span><b id="disk-p">—</b></div>
+      <div class="kv"><span>inode 使用</span><b id="inode">—</b></div>
+    </div>
+
+    <div class="card">
+      <h2>网络流量</h2>
+      <div class="big" id="net-v" style="font-size:22px">--</div>
+      <div class="sub">↓ <span id="net-r">—</span> · ↑ <span id="net-t">—</span></div>
+      <div class="bar"><i id="net-b" style="background:linear-gradient(90deg,rgba(255,255,255,.42),rgba(255,255,255,.95))"></i></div>
+      <div class="kv"><span>累计下行 / 上行</span><b id="net-a">—</b></div>
+      <div class="kv"><span>主网卡</span><b id="net-i">—</b></div>
+    </div>
+
+    <div class="card wide">
+      <h2>分区使用情况</h2>
+      <table id="mounts"><thead><tr><th>挂载点</th><th>设备</th><th class="r">总量</th><th class="r">已用</th><th class="r">可用</th><th class="r">使用率</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="card wide">
+      <h2>Top 进程（采样区间 CPU%）</h2>
+      <table id="procs"><thead><tr><th>PID</th><th>命令</th><th class="r">CPU%</th><th class="r">内存%</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="card wide">
+      <h2>系统信息</h2>
+      <div class="kv"><span>主机名 / 发行版</span><b id="i-host">—</b></div>
+      <div class="kv"><span>内核 / 架构</span><b id="i-kernel">—</b></div>
+      <div class="kv"><span>CPU 型号 / 核心</span><b id="i-cpu">—</b></div>
+      <div class="kv"><span>负载 (1/5/15 分钟)</span><b id="i-load">—</b></div>
+      <div class="kv"><span>进程数 / 运行中</span><b id="i-proc">—</b></div>
+      <div class="kv"><span>服务启动时间 / 采样</span><b id="i-srv">—</b></div>
+    </div>
+
+    <div class="card wide">
+      <h2>网卡明细</h2>
+      <table id="nics"><thead><tr><th>接口</th><th class="r">IP</th><th class="r">↓ 速率</th><th class="r">↑ 速率</th><th class="r">累计下行</th><th class="r">累计上行</th></tr></thead><tbody></tbody></table>
+    </div>
+
+  </div>
+</div>
+
+
+<script>
+(function () {
+  var last = null;
+  function $(i) { return document.getElementById(i); }
+  function human(n) {
+    if (n === null || n === undefined || isNaN(n)) return '--';
+    if (n >= 1099511627776) return (n / 1099511627776).toFixed(2) + ' TB';
+    if (n >= 1073741824) return (n / 1073741824).toFixed(2) + ' GB';
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + ' MB';
+    if (n >= 1024) return (n / 1024).toFixed(1) + ' KB';
+    return Math.round(n) + ' B';
+  }
+  function hr(n) { return human(n) + '/s'; }
+  function up(s) { var d = Math.floor(s/86400), h = Math.floor(s%86400/3600), m = Math.floor(s%3600/60); return (d?d+'天':'') + (h?h+'小时':'') + m + '分'; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+
+  function setHTML(el, html) { if (el.__h !== html) { el.__h = html; el.innerHTML = html; } }
+  var TOPROWS = 8;
+  var lastTop = [];
+  function stableTop(list) {
+    var rank = {}; lastTop.forEach(function (p, i) { rank[p.pid] = i; });
+    var arr = list.slice(0, TOPROWS);
+    arr.sort(function (a, b) {
+      var diff = b.cpu - a.cpu;
+      if (Math.abs(diff) < 2 && rank[a.pid] !== undefined && rank[b.pid] !== undefined) return rank[a.pid] - rank[b.pid];
+      return diff;
+    });
+    lastTop = arr;
+    return arr;
+  }
+
+  function render(d) {
+    last = d;
+    var sys = d.system || {}, cpu = d.cpu || {}, mem = d.memory || {}, disk = d.disk || {}, net = d.network || {};
+    $('err').className = 'err';
+    $('p-host').innerHTML = '<b>' + esc(sys.hostname) + '</b> · ' + esc(sys.distro || '');
+    $('p-ip').innerHTML = 'IP <b>' + esc(net.publicIp || sys.ipPrivate || '') + '</b>';
+    $('p-up').innerHTML = '运行 <b>' + up(sys.uptime) + '</b>';
+    $('p-ago').innerHTML = '刷新 <b>' + new Date(d.ts).toLocaleTimeString() + '</b>';
+
+    $('cpu-v').innerHTML = (cpu.usage || 0).toFixed(1) + '<i>%</i>';
+    $('cpu-s').textContent = '用户 ' + (cpu.user || 0).toFixed(1) + '% · 系统 ' + (cpu.system || 0).toFixed(1) + '% · IO等待 ' + (cpu.iowait || 0).toFixed(1) + '%' + ((cpu.steal || 0) > 0.2 ? ' · steal ' + cpu.steal.toFixed(1) + '%' : '');
+    $('cpu-b').style.width = (cpu.usage || 0) + '%';
+    var cores = cpu.cores || [];
+    var box = $('cores');
+    if (box.children.length !== cores.length) { box.innerHTML = cores.map(function () { return '<div><i></i><b></b></div>'; }).join(''); }
+    cores.forEach(function (c, i) {
+      var el = box.children[i]; if (!el) return;
+      el.children[0].style.height = Math.min(100, c.usage) + '%';
+      el.children[1].textContent = Math.round(c.usage);
+      el.title = c.name + ' ' + c.usage.toFixed(1) + '%';
+    });
+
+    $('mem-v').innerHTML = (mem.usage || 0).toFixed(1) + '<i>%</i>';
+    $('mem-s').textContent = human(mem.used) + ' / ' + human(mem.total);
+    $('mem-b').style.width = (mem.usage || 0) + '%';
+    $('mem-a').textContent = human(mem.available) + ' / ' + human(mem.cached);
+    $('swap').textContent = human(mem.swapUsed) + ' / ' + human(mem.swapTotal) + ' (' + (mem.swapUsage || 0).toFixed(0) + '%)';
+
+    var root = (disk.mounts || []).filter(function (m) { return m.mount === '/'; })[0] || (disk.mounts || [])[0] || {};
+    $('dio-v').textContent = hr(disk.readRate + disk.writeRate);
+    $('dio-r').textContent = hr(disk.readRate); $('dio-w').textContent = hr(disk.writeRate);
+    $('disk-b').style.width = (root.usage || 0) + '%';
+    $('disk-p').textContent = human(root.used) + ' / ' + human(root.total) + ' (' + (root.usage || 0).toFixed(1) + '%)';
+    $('inode').textContent = root.inodes ? ((root.inodesUsed / root.inodes) * 100).toFixed(1) + '% (' + root.inodesUsed + '/' + root.inodes + ')' : '—';
+
+    $('net-v').textContent = hr(net.rxRate + net.txRate);
+    $('net-r').textContent = hr(net.rxRate); $('net-t').textContent = hr(net.txRate);
+    $('net-b').style.width = Math.min(100, (net.rxRate + net.txRate) / (12.5 * 1024 * 1024) * 100) + '%';
+    $('net-a').textContent = human(net.rxTotal) + ' / ' + human(net.txTotal);
+    $('net-i').textContent = net.primary || '—';
+
+    setHTML($('mounts').tBodies[0], (disk.mounts || []).map(function (m) {
+      return '<tr><td>' + esc(m.mount) + '</td><td style="color:var(--dim)">' + esc(m.device) + ' · ' + esc(m.fstype) + '</td><td class="r">' + human(m.total) + '</td><td class="r">' + human(m.used) + '</td><td class="r">' + human(m.free) + '</td><td class="r" style="color:' + (m.usage > 85 ? 'var(--warn)' : 'var(--fg)') + '">' + m.usage.toFixed(1) + '%</td></tr>';
+    }).join('') || '<tr><td colspan="6" style="color:var(--dim)">无数据</td></tr>');
+
+    var top = stableTop(cpu.top || []);
+    var prows = top.map(function (p) {
+      return '<tr><td>' + p.pid + '</td><td>' + esc(p.name) + '</td><td class="r">' + p.cpu.toFixed(1) + '</td><td class="r">' + p.mem.toFixed(1) + '</td></tr>';
+    }).join('');
+    for (var pad = top.length; pad < TOPROWS; pad++) prows += '<tr class="pad"><td colspan="4">-</td></tr>';
+    setHTML($('procs').tBodies[0], prows);
+
+    setHTML($('nics').tBodies[0], (net.interfaces || []).map(function (n) {
+      return '<tr><td>' + esc(n.name) + '</td><td>' + esc((n.ip || []).join(', ') || '—') + '</td><td class="r">' + hr(n.rxRate) + '</td><td class="r">' + hr(n.txRate) + '</td><td class="r">' + human(n.rxTotal) + '</td><td class="r">' + human(n.txTotal) + '</td></tr>';
+    }).join(''));
+
+    $('i-host').textContent = sys.hostname + ' · ' + (sys.distro || '');
+    $('i-kernel').textContent = sys.kernel + ' · ' + sys.arch;
+    $('i-cpu').textContent = sys.cpuModel + ' · ' + sys.cpuCores + ' 核' + (sys.cpuCoresEffective !== sys.cpuCores ? ' (配额 ' + sys.cpuCoresEffective + ')' : '');
+    $('i-load').textContent = (cpu.load1 || 0).toFixed(2) + ' / ' + (cpu.load5 || 0).toFixed(2) + ' / ' + (cpu.load15 || 0).toFixed(2);
+    $('i-proc').textContent = cpu.processes + ' / ' + cpu.running;
+    $('i-srv').textContent = up(sys.serverUptime || 0) + ' · ' + (d.config ? d.config.intervalMs + 'ms 采样' : '—');
+
+  }
+
+  function gotoLogin() {
+    var n = location.pathname + (location.search || '');
+    location.replace('/login?next=' + encodeURIComponent(n === '/' ? '' : n));
+  }
+
+  function tick() {
+    fetch('/api/stats', { cache: 'no-store', credentials: 'same-origin' }).then(function (r) {
+      var e = new Error('HTTP ' + r.status); e.status = r.status; if (!r.ok) throw e;
+      return r.json();
+    }).then(function (d) {
+      if (d.error) { var e2 = new Error(d.error); e2.status = 401; throw e2; }
+      $('err').className = 'err';
+      render(d);
+    }).catch(function (e) {
+      if (e.status === 401) { gotoLogin(); return; }
+      var el = $('err'); el.className = 'err on'; el.textContent = '读取数据失败：' + (e.message || e) + '（服务可能未启动）';
+    });
+  }
+
+
+  tick(); setInterval(tick, 3000);
+  window.addEventListener('resize', function () { if (last) render(last); });
+})();
+</script>
+</body>
+</html>

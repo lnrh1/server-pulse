@@ -1,0 +1,5 @@
+config.json
+sessions.json
+TOKEN.txt
+*.log
+nohup.out

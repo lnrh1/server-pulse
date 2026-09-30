@@ -1,0 +1,9 @@
+{
+  "port": 8080,
+  "host": "0.0.0.0",
+  "token": "自己定一个登录口令（也可用 openssl rand -hex 16）",
+  "sessionDays": 5,
+  "sessionFile": false,
+  "intervalMs": 2000,
+  "label": "my-server"
+}

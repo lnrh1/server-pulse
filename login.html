@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>登录 · 服务器监控</title>
+<link rel="icon" href="/icon.svg">
+<style>
+  :root { --bg:#0d0f12; --fg:#f4f4f4; --dim:#a0a0a0; --line:rgba(255,255,255,.14); }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--bg); color:var(--fg);
+    font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",Roboto,sans-serif;
+    font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased; }
+  form { width:280px; display:flex; flex-direction:column; gap:11px; }
+  h1 { margin:0 0 8px; font-size:15px; font-weight:600; letter-spacing:.6px; text-align:center; }
+  input { background:rgba(255,255,255,.06); border:1px solid var(--line); border-radius:10px; padding:12px 13px; color:var(--fg); font-size:13.5px; outline:none; font-family:inherit; }
+  input::placeholder { color:var(--dim); }
+  input:focus { border-color:rgba(255,255,255,.4); background:rgba(255,255,255,.09); }
+  button { border:0; border-radius:10px; padding:12px; font-size:13.5px; font-weight:600; cursor:pointer; background:rgba(255,255,255,.9); color:#10131a; font-family:inherit; }
+  button:hover { background:#fff; }
+  .e { min-height:18px; font-size:12px; text-align:center; color:var(--fg); opacity:.85; }
+  .h { font-size:11.5px; text-align:center; color:var(--dim); }
+</style></head>
+<body>
+  <form method="post" action="/login" autocomplete="off">
+    <h1>服务器监控</h1>
+    <input name="token" type="password" placeholder="访问口令" spellcheck="false" autofocus>
+    <input type="hidden" name="next" value="__NEXT__">
+    <button type="submit">进入</button>
+    <div class="e">__ERR__</div>
+    <div class="h">登录后本设备 __DAYS__ 天内免登录</div>
+  </form>
+</body></html>
